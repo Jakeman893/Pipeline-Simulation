@@ -1,0 +1,46 @@
+{
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "C++ Launch",
+                "type": "cppdbg",
+                "request": "launch",
+                "program": "/mnt/c/Users/jakem.JACOB-PC/Source/Lab_2/src/sim",
+                "args": ["-pipewidth 1 ../traces/bzip2.ptr.gz"],
+                "stopAtEntry": false,
+                "cwd": "/mnt/c/Users/jakem.JACOB-PC/Source/Lab_2/src",
+                "environment": [],
+                "externalConsole": true,
+                "windows": {
+                    "MIMode": "gdb",
+                    "setupCommands": [
+                        {
+                            "description": "Enable pretty-printing for gdb",
+                            "text": "-enable-pretty-printing",
+                            "ignoreFailures": true
+                        }
+                    ]
+                },
+                "pipeTransport": {
+                    "debuggerPath": "/usr/bin/gdb",
+                    "pipeProgram": "c:\\windows\\sysnative\\bash.exe",
+                    "pipeArgs": ["-c"],
+                    "pipeCwd": ""
+                },
+                "sourceFileMap": {
+                    "/mnt/z": "c:\\"
+                }
+            },
+            {
+                "name": "(Windows) Launch",
+                "type": "cppvsdbg",
+                "request": "launch",
+                "program": "${workspaceRoot}/sim.exe",
+                "args": [],
+                "stopAtEntry": false,
+                "cwd": "${workspaceRoot}",
+                "environment": [],
+                "externalConsole": true
+            }
+        ]
+    }

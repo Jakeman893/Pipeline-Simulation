@@ -50,7 +50,7 @@ typedef struct Pipeline {
   uint64_t stat_retired_inst;         // Total Commited Instructions
   uint64_t stat_num_cycle;            // Total Cycles
 
-  std::set<uint64_t> destinations;
+  std::set<uint8_t> destinations;
 }Pipeline;
 
 Pipeline* pipe_init(FILE *tr_file);   // Allocate Structures

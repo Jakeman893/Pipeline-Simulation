@@ -137,6 +137,7 @@ void pipe_cycle_WB(Pipeline *p){
       {
         p->destinations.erase(p->pipe_latch[MEM_LATCH][ii].tr_entry.dest);
         p->pipe_latch[ID_LATCH][ii].stall = false;
+        p->pipe_latch[FE_LATCH][ii].stall = false;
       }
       if(p->pipe_latch[MEM_LATCH][ii].valid){
         p->stat_retired_inst++;

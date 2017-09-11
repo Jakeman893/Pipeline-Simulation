@@ -127,10 +127,13 @@ void pipe_cycle(Pipeline *p)
 void pipe_cycle_WB(Pipeline *p){
   int ii;
   for(ii=0; ii<PIPE_WIDTH; ii++){
-    if(p->pipe_latch[MEM_LATCH][ii].valid){
-      p->stat_retired_inst++;
-      if(p->pipe_latch[MEM_LATCH][ii].op_id >= p->halt_op_id){
-	p->halt=true;
+    if(!p->pipe_latch[FE_LATCH][ii].stall)
+    {
+      if(p->pipe_latch[MEM_LATCH][ii].valid){
+        p->stat_retired_inst++;
+        if(p->pipe_latch[MEM_LATCH][ii].op_id >= p->halt_op_id){
+    p->halt=true;
+        }
       }
     }
   }
@@ -141,7 +144,10 @@ void pipe_cycle_WB(Pipeline *p){
 void pipe_cycle_MEM(Pipeline *p){
   int ii;
   for(ii=0; ii<PIPE_WIDTH; ii++){
-    p->pipe_latch[MEM_LATCH][ii]=p->pipe_latch[EX_LATCH][ii];
+    if(!p->pipe_latch[FE_LATCH][ii].stall)
+    {
+      p->pipe_latch[MEM_LATCH][ii]=p->pipe_latch[EX_LATCH][ii];
+    }
   }
 }
 
@@ -150,7 +156,10 @@ void pipe_cycle_MEM(Pipeline *p){
 void pipe_cycle_EX(Pipeline *p){
   int ii;
   for(ii=0; ii<PIPE_WIDTH; ii++){
-    p->pipe_latch[EX_LATCH][ii]=p->pipe_latch[ID_LATCH][ii];
+    if(!p->pipe_latch[FE_LATCH][ii].stall)
+    {
+      p->pipe_latch[EX_LATCH][ii]=p->pipe_latch[ID_LATCH][ii];
+    }
   }
 }
 
@@ -159,14 +168,17 @@ void pipe_cycle_EX(Pipeline *p){
 void pipe_cycle_ID(Pipeline *p){
 int ii;
   for(ii=0; ii<PIPE_WIDTH; ii++){
-    p->pipe_latch[ID_LATCH][ii]=p->pipe_latch[FE_LATCH][ii];
+    if(!p->pipe_latch[FE_LATCH][ii].stall)
+    {
+      p->pipe_latch[ID_LATCH][ii]=p->pipe_latch[FE_LATCH][ii];
 
-    if(ENABLE_MEM_FWD){
-      // TODO
-    }
+      if(ENABLE_MEM_FWD){
+        // TODO
+      }
 
-    if(ENABLE_EXE_FWD){
-      // TODO
+      if(ENABLE_EXE_FWD){
+        // TODO
+      }
     }
   }
 }
@@ -179,14 +191,20 @@ void pipe_cycle_FE(Pipeline *p){
   bool tr_read_success;
 
   for(ii=0; ii<PIPE_WIDTH; ii++){
-    pipe_get_fetch_op(p, &fetch_op);
+    if(!p->pipe_latch[FE_LATCH][ii].stall)
+    {
+      // TODO: Track source register needed by instruction when dependence exists
+      // TODO: Clear source register needed by instruction when dependence resolved
+      // TODO: While dependence exists, stall pipeline
+      pipe_get_fetch_op(p, &fetch_op);
 
-    if(BPRED_POLICY){
-      pipe_check_bpred(p, &fetch_op);
+      if(BPRED_POLICY){
+        pipe_check_bpred(p, &fetch_op);
+      }
+      
+      // copy the op in FE LATCH
+      p->pipe_latch[FE_LATCH][ii]=fetch_op;
     }
-    
-    // copy the op in FE LATCH
-    p->pipe_latch[FE_LATCH][ii]=fetch_op;
   }
   
 }

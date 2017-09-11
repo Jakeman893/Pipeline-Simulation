@@ -121,7 +121,7 @@ void pipe_cycle(Pipeline *p)
     pipe_cycle_ID(p);
     pipe_cycle_FE(p);
 
-    pipe_print_state(p);
+    // pipe_print_state(p);
 }
 /**********************************************************************
  * -----------  DO NOT MODIFY THE CODE ABOVE THIS LINE ----------------
@@ -191,16 +191,11 @@ int ii;
     if(stage->stall)
     {
       dependence_check(stage, &p->destinations);
-      // pipe_print_state(p);
     }else
     {
       p->pipe_latch[ID_LATCH][ii]=p->pipe_latch[FE_LATCH][ii];
       // Stall this stage if next stage is also stalled
       p->pipe_latch[ID_LATCH][ii].stall=p->pipe_latch[EX_LATCH][ii].stall;
-      dependence_check(stage, &p->destinations);
-
-      if(stage->tr_entry.dest_needed)
-        p->destinations.insert(stage->tr_entry.dest);
 
       if(ENABLE_MEM_FWD){
         // TODO
@@ -222,20 +217,26 @@ void pipe_cycle_FE(Pipeline *p){
   bool tr_read_success;
 
   for(ii=0; ii<PIPE_WIDTH; ii++){
-    // If not stalled fetch next instruction
-    if(!p->pipe_latch[FE_LATCH][ii].stall)
+    Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
+    if(stage->stall)
+    {
+      dependence_check(stage, &p->destinations);
+    }else    // If not stalled fetch next instruction
     {
       pipe_get_fetch_op(p, &fetch_op);
+
+      dependence_check(&fetch_op, &p->destinations);
 
       if(BPRED_POLICY){
         pipe_check_bpred(p, &fetch_op);
       }
       
+      if(fetch_op.tr_entry.dest_needed)
+        p->destinations.insert(fetch_op.tr_entry.dest);
+
       // copy the op in FE LATCH
       p->pipe_latch[FE_LATCH][ii]=fetch_op;
     }
-    // Stall if ID state is stalled
-    p->pipe_latch[FE_LATCH][ii].stall = p->pipe_latch[ID_LATCH][ii].stall;
   }
   
 }

@@ -121,7 +121,7 @@ void pipe_cycle(Pipeline *p)
     pipe_cycle_ID(p);
     pipe_cycle_FE(p);
 
-    // pipe_print_state(p);
+    pipe_print_state(p);
 }
 /**********************************************************************
  * -----------  DO NOT MODIFY THE CODE ABOVE THIS LINE ----------------
@@ -184,11 +184,8 @@ int ii;
 
     Pipeline_Latch *stage = &p->pipe_latch[ID_LATCH][ii];
 
-    if(stage->stall)
-    {
-      dependence_check(stage, &p->destinations);
-      // pipe_print_state(p);
-    }else
+    dependence_check(stage, &p->destinations);
+    if(!stage->stall)
     {
       p->pipe_latch[ID_LATCH][ii]=p->pipe_latch[FE_LATCH][ii];
       // Stall this stage if next stage is also stalled

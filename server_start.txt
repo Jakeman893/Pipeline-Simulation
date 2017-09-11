@@ -1,0 +1,1 @@
+gdbserver :9091 sim -pipewidth 1 ../traces/bzip2.ptr.gz

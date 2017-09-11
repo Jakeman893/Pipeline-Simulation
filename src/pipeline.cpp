@@ -120,7 +120,6 @@ void pipe_cycle(Pipeline *p)
     pipe_cycle_EX(p);
     pipe_cycle_ID(p);
     pipe_cycle_FE(p);
-	    
 }
 /**********************************************************************
  * -----------  DO NOT MODIFY THE CODE ABOVE THIS LINE ----------------
@@ -129,11 +128,11 @@ void pipe_cycle(Pipeline *p)
 void pipe_cycle_WB(Pipeline *p){
   int ii;
   for(ii=0; ii<PIPE_WIDTH; ii++){
-    if(!p->pipe_latch[FE_LATCH][ii].stall)
+    if(!p->pipe_latch[MEM_LATCH][ii].stall)
     {
-      // TODO: Remove destination register from pipeline destinations set
-      if(p->pipe_latch[FE_LATCH][ii].tr_entry.dest_needed)
-        p->destinations.erase(p->pipe_latch[FE_LATCH][ii].tr_entry.dest);
+      // TODO: Remove destination register from pipeline destinations set as it has been written to
+      if(p->pipe_latch[MEM_LATCH][ii].tr_entry.dest_needed)
+        p->destinations.erase(p->pipe_latch[MEM_LATCH][ii].tr_entry.dest);
       if(p->pipe_latch[MEM_LATCH][ii].valid){
         p->stat_retired_inst++;
         if(p->pipe_latch[MEM_LATCH][ii].op_id >= p->halt_op_id){
@@ -149,7 +148,7 @@ void pipe_cycle_WB(Pipeline *p){
 void pipe_cycle_MEM(Pipeline *p){
   int ii;
   for(ii=0; ii<PIPE_WIDTH; ii++){
-    if(!p->pipe_latch[FE_LATCH][ii].stall)
+    if(!p->pipe_latch[MEM_LATCH][ii].stall)
     {
       p->pipe_latch[MEM_LATCH][ii]=p->pipe_latch[EX_LATCH][ii];
     }
@@ -173,9 +172,27 @@ void pipe_cycle_EX(Pipeline *p){
 void pipe_cycle_ID(Pipeline *p){
 int ii;
   for(ii=0; ii<PIPE_WIDTH; ii++){
-    if(!p->pipe_latch[FE_LATCH][ii].stall)
+    // TODO: Check if previously stalled
+    // True:
+    /// Check if dependency still exists -> if not stall = false
+    // False:
+    /// Carry out ops and add destination to set
+
+    Pipeline_Latch *stage = &p->pipe_latch[ID_LATCH][ii];
+
+    if(stage->stall)
+    {
+      dependence_check(stage, &p->destinations);
+      pipe_print_state(p);
+    }else
     {
       p->pipe_latch[ID_LATCH][ii]=p->pipe_latch[FE_LATCH][ii];
+      // Stall this stage if next stage is also stalled
+      p->pipe_latch[ID_LATCH][ii].stall=p->pipe_latch[EX_LATCH][ii].stall;
+      dependence_check(stage, &p->destinations);
+
+      if(stage->tr_entry.dest_needed)
+        p->destinations.insert(stage->tr_entry.dest);
 
       if(ENABLE_MEM_FWD){
         // TODO
@@ -184,6 +201,7 @@ int ii;
       if(ENABLE_EXE_FWD){
         // TODO
       }
+
     }
   }
 }
@@ -196,15 +214,10 @@ void pipe_cycle_FE(Pipeline *p){
   bool tr_read_success;
 
   for(ii=0; ii<PIPE_WIDTH; ii++){
+    // If not stalled fetch next instruction
     if(!p->pipe_latch[FE_LATCH][ii].stall)
     {
       pipe_get_fetch_op(p, &fetch_op);
-
-      // TODO: Add destination registers to pipeline destinations set
-      if(p->pipe_latch[FE_LATCH][ii].tr_entry.dest_needed)
-        // If the destination failed to be added, means it already exists thus stall
-        if(p->destinations.insert(p->pipe_latch[FE_LATCH][ii].tr_entry.dest).second)
-          p->pipe_latch[FE_LATCH][ii].stall = true;
 
       if(BPRED_POLICY){
         pipe_check_bpred(p, &fetch_op);
@@ -212,6 +225,8 @@ void pipe_cycle_FE(Pipeline *p){
       
       // copy the op in FE LATCH
       p->pipe_latch[FE_LATCH][ii]=fetch_op;
+      // Stall if ID state is stalled
+      p->pipe_latch[FE_LATCH][ii].stall = p->pipe_latch[ID_LATCH][ii].stall;
     }
   }
   
@@ -228,3 +243,17 @@ void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op){
 
 
 //--------------------------------------------------------------------//
+
+void dependence_check(Pipeline_Latch_Struct *latch, const std::set<uint8_t>* dests)
+{
+  //Check dependencies set for each source and destination in use
+  latch->stall = false;
+  // WAW (Write after Write)
+  if(latch->tr_entry.dest_needed)
+    latch->stall |= dests->count(latch->tr_entry.dest);
+  // RAW (Read after Write)
+  if(latch->tr_entry.src1_needed)
+    latch->stall |= dests->count(latch->tr_entry.src1_reg);
+  if(latch->tr_entry.src2_needed)
+    latch->stall |= dests->count(latch->tr_entry.src2_reg);
+}

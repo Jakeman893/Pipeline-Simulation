@@ -201,8 +201,9 @@ void pipe_cycle_FE(Pipeline *p){
       // TODO: Add destination registers to pipeline destinations set
       if(p->pipe_latch[FE_LATCH][ii].tr_entry.dest_needed)
         // If the destination failed to be added, means it already exists thus stall
-        if(p->destinations.insert(p->pipe_latch[FE_LATCH][ii].tr_entry.dest).second)
-          p->pipe_latch[FE_LATCH][ii].stall = true;
+        auto ret = p->destinations.insert(p->pipe_latch[FE_LATCH][ii].tr_entry.dest)
+        // if(p->destinations.insert(p->pipe_latch[FE_LATCH][ii].tr_entry.dest).second)
+        //   p->pipe_latch[FE_LATCH][ii].stall = true;
 
       if(BPRED_POLICY){
         pipe_check_bpred(p, &fetch_op);

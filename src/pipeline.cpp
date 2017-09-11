@@ -160,7 +160,7 @@ void pipe_cycle_MEM(Pipeline *p){
 void pipe_cycle_EX(Pipeline *p){
   int ii;
   for(ii=0; ii<PIPE_WIDTH; ii++){
-    if(!p->pipe_latch[FE_LATCH][ii].stall)
+    if(!p->pipe_latch[EX_LATCH][ii].stall)
     {
       p->pipe_latch[EX_LATCH][ii]=p->pipe_latch[ID_LATCH][ii];
     }
@@ -225,9 +225,9 @@ void pipe_cycle_FE(Pipeline *p){
       
       // copy the op in FE LATCH
       p->pipe_latch[FE_LATCH][ii]=fetch_op;
-      // Stall if ID state is stalled
-      p->pipe_latch[FE_LATCH][ii].stall = p->pipe_latch[ID_LATCH][ii].stall;
     }
+    // Stall if ID state is stalled
+    p->pipe_latch[FE_LATCH][ii].stall = p->pipe_latch[ID_LATCH][ii].stall;
   }
   
 }

@@ -50,7 +50,7 @@ typedef struct Pipeline {
   uint64_t stat_retired_inst;         // Total Commited Instructions
   uint64_t stat_num_cycle;            // Total Cycles
 
-  std::set<uint8_t> destinations[4];
+  std::set<uint8_t> destinations;
 }Pipeline;
 
 Pipeline* pipe_init(FILE *tr_file);   // Allocate Structures
@@ -65,9 +65,5 @@ void pipe_cycle_WB(Pipeline *p);                    // WB Stage
 void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op); // Branch Prediction Check
 
 void pipe_print_state(Pipeline *p);                 // Print Pipeline Latches
-
-void pipe_detect_RAR(Pipeline *p);                  // Detects a read after write dependency
-void pipe_detect_WAW(Pipeline *p);                  // Detects a write after write dependency
-void pipe_detect_WAR(Pipeline *p);                  // Detects a write after read dependency
 
 #endif

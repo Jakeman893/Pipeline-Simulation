@@ -52,6 +52,8 @@ Pipeline * pipe_init(FILE *tr_file_in){
     p->tr_file = tr_file_in;
     p->halt_op_id = ((uint64_t)-1) - 3;           
 
+    p->destinations = std::set<uint8_t>();
+
     // Allocated Branch Predictor
     if(BPRED_POLICY){
       p->b_pred = new BPRED(BPRED_POLICY);
@@ -201,9 +203,8 @@ void pipe_cycle_FE(Pipeline *p){
       // TODO: Add destination registers to pipeline destinations set
       if(p->pipe_latch[FE_LATCH][ii].tr_entry.dest_needed)
         // If the destination failed to be added, means it already exists thus stall
-        bool ret = p->destinations.insert(p->pipe_latch[FE_LATCH][ii].tr_entry.dest).second;
-        // if(p->destinations.insert(p->pipe_latch[FE_LATCH][ii].tr_entry.dest).second)
-        //   p->pipe_latch[FE_LATCH][ii].stall = true;
+        if(p->destinations.insert(p->pipe_latch[FE_LATCH][ii].tr_entry.dest).second)
+          p->pipe_latch[FE_LATCH][ii].stall = true;
 
       if(BPRED_POLICY){
         pipe_check_bpred(p, &fetch_op);
@@ -227,15 +228,3 @@ void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op){
 
 
 //--------------------------------------------------------------------//
-
-void pipe_detect_RAR(Pipeline *p){
-
-}
-
-void pipe_detect_WAW(Pipeline *p){
-
-}
-
-void pipe_detect_WAR(Pipeline *p){
-
-}

@@ -163,6 +163,8 @@ void pipe_cycle_EX(Pipeline *p){
     if(!p->pipe_latch[EX_LATCH][ii].stall)
     {
       p->pipe_latch[EX_LATCH][ii]=p->pipe_latch[ID_LATCH][ii];
+      p->pipe_latch[EX_LATCH][ii].valid = !p->pipe_latch[EX_LATCH][ii].stall;
+      p->pipe_latch[EX_LATCH][ii].stall = true;
     }
   }
 }

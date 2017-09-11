@@ -129,6 +129,9 @@ void pipe_cycle_WB(Pipeline *p){
   for(ii=0; ii<PIPE_WIDTH; ii++){
     if(!p->pipe_latch[FE_LATCH][ii].stall)
     {
+      // TODO: Remove destination register from pipeline destinations set
+      if(p->pipe_latch[FE_LATCH][ii].tr_entry.dest_needed)
+        p->destinations.erase(p->pipe_latch[FE_LATCH][ii].tr_entry.dest);
       if(p->pipe_latch[MEM_LATCH][ii].valid){
         p->stat_retired_inst++;
         if(p->pipe_latch[MEM_LATCH][ii].op_id >= p->halt_op_id){
@@ -193,10 +196,13 @@ void pipe_cycle_FE(Pipeline *p){
   for(ii=0; ii<PIPE_WIDTH; ii++){
     if(!p->pipe_latch[FE_LATCH][ii].stall)
     {
-      // TODO: Track source register needed by instruction when dependence exists
-      // TODO: Clear source register needed by instruction when dependence resolved
-      // TODO: While dependence exists, stall pipeline
       pipe_get_fetch_op(p, &fetch_op);
+
+      // TODO: Add destination registers to pipeline destinations set
+      if(p->pipe_latch[FE_LATCH][ii].tr_entry.dest_needed)
+        // If the destination failed to be added, means it already exists thus stall
+        if(p->destinations.insert(p->pipe_latch[FE_LATCH][ii].tr_entry.dest).second)
+          p->pipe_latch[FE_LATCH][ii].stall = true;
 
       if(BPRED_POLICY){
         pipe_check_bpred(p, &fetch_op);
@@ -221,3 +227,14 @@ void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op){
 
 //--------------------------------------------------------------------//
 
+void pipe_detect_RAR(Pipeline *p){
+
+}
+
+void pipe_detect_WAW(Pipeline *p){
+
+}
+
+void pipe_detect_WAR(Pipeline *p){
+
+}

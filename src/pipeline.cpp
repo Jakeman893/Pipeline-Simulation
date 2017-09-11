@@ -121,7 +121,7 @@ void pipe_cycle(Pipeline *p)
     pipe_cycle_ID(p);
     pipe_cycle_FE(p);
 
-    pipe_print_state(p);
+    // pipe_print_state(p);
 }
 /**********************************************************************
  * -----------  DO NOT MODIFY THE CODE ABOVE THIS LINE ----------------
@@ -134,7 +134,10 @@ void pipe_cycle_WB(Pipeline *p){
     {
       // TODO: Remove destination register from pipeline destinations set as it has been written to
       if(p->pipe_latch[MEM_LATCH][ii].tr_entry.dest_needed)
+      {
         p->destinations.erase(p->pipe_latch[MEM_LATCH][ii].tr_entry.dest);
+        p->pipe_latch[ID_LATCH][ii].stall = false;
+      }
       if(p->pipe_latch[MEM_LATCH][ii].valid){
         p->stat_retired_inst++;
         if(p->pipe_latch[MEM_LATCH][ii].op_id >= p->halt_op_id){
@@ -184,8 +187,11 @@ int ii;
 
     Pipeline_Latch *stage = &p->pipe_latch[ID_LATCH][ii];
 
-    dependence_check(stage, &p->destinations);
-    if(!stage->stall)
+    if(stage->stall)
+    {
+      dependence_check(stage, &p->destinations);
+      // pipe_print_state(p);
+    }else
     {
       p->pipe_latch[ID_LATCH][ii]=p->pipe_latch[FE_LATCH][ii];
       // Stall this stage if next stage is also stalled

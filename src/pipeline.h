@@ -66,6 +66,8 @@ void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op); // Branch Predicti
 
 void pipe_print_state(Pipeline *p);                 // Print Pipeline Latches
 
-void dependence_check(Pipeline_Latch_Struct *latch, const std::set<uint8_t>* dests);    //Check sources and destination to determine if dependency
+void fe_dependence_check(Pipeline_Latch_Struct *latch, const std::set<uint8_t>* dests);    //Check sources and destination to determine if dependency
+
+void wb_dependence_check(uint8_t writ_dest, Pipeline_Latch_Struct *festage);
 
 #endif

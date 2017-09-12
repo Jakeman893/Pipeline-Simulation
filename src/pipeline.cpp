@@ -134,7 +134,10 @@
      {
        // TODO: Remove destination register from pipeline destinations set as it has been written to
        if(p->pipe_latch[MEM_LATCH][ii].tr_entry.dest_needed)
+       {
          p->destinations.erase(p->pipe_latch[MEM_LATCH][ii].tr_entry.dest);
+         wb_dependence_check(p->pipe_latch[MEM_LATCH][ii].tr_entry.dest, &p->pipe_latch[FE_LATCH][ii]);
+       }
        if(p->pipe_latch[MEM_LATCH][ii].valid){
          p->stat_retired_inst++;
          if(p->pipe_latch[MEM_LATCH][ii].op_id >= p->halt_op_id){
@@ -145,6 +148,7 @@
    }
  }
  
+
  //--------------------------------------------------------------------//
  
  void pipe_cycle_MEM(Pipeline *p){
@@ -165,8 +169,8 @@
      if(!p->pipe_latch[EX_LATCH][ii].stall)
      {
        p->pipe_latch[EX_LATCH][ii]=p->pipe_latch[ID_LATCH][ii];
-       p->pipe_latch[EX_LATCH][ii].valid = !p->pipe_latch[EX_LATCH][ii].stall && p->pipe_latch[EX_LATCH][ii].valid;
-       p->pipe_latch[EX_LATCH][ii].stall = false;
+      //  p->pipe_latch[EX_LATCH][ii].valid = !p->pipe_latch[EX_LATCH][ii].stall && p->pipe_latch[EX_LATCH][ii].valid;
+      //  p->pipe_latch[EX_LATCH][ii].stall = false;
      }
    }
  }
@@ -188,7 +192,8 @@
      {
        p->pipe_latch[ID_LATCH][ii]=p->pipe_latch[FE_LATCH][ii];
        // Stall this stage if next stage is also stalled
-       p->pipe_latch[ID_LATCH][ii].stall=p->pipe_latch[EX_LATCH][ii].stall;
+       p->pipe_latch[ID_LATCH][ii].valid = !p->pipe_latch[FE_LATCH][ii].stall && p->pipe_latch[FE_LATCH][ii].valid;
+       p->pipe_latch[ID_LATCH][ii].stall = false;
  
        if(ENABLE_MEM_FWD){
          // TODO
@@ -215,7 +220,7 @@
 
     if(stage->stall)
     {
-      dependence_check(stage, &p->destinations);
+      fe_dependence_check(stage, &p->destinations);
     } else
     {
       //Fetch Instruction
@@ -229,13 +234,13 @@
       p->pipe_latch[FE_LATCH][ii]=fetch_op;
 
       //Stall if next state is stalled
-      fetch_op.stall = p->pipe_latch[ID_LATCH][ii].stall;
+      p->pipe_latch[FE_LATCH][ii].stall = p->pipe_latch[ID_LATCH][ii].stall;
 
       // Check for dependencies
-      dependence_check(&fetch_op, &p->destinations);
+      fe_dependence_check(&p->pipe_latch[FE_LATCH][ii], &p->destinations);
 
-      if(fetch_op.tr_entry.dest_needed && !fetch_op.stall)
-        p->destinations.insert(fetch_op.tr_entry.dest);
+      if(p->pipe_latch[FE_LATCH][ii].tr_entry.dest_needed && !p->pipe_latch[FE_LATCH][ii].stall)
+        p->destinations.insert(p->pipe_latch[FE_LATCH][ii].tr_entry.dest);
 
     }
    }
@@ -254,7 +259,7 @@
  
  //--------------------------------------------------------------------//
  
- void dependence_check(Pipeline_Latch_Struct *latch, const std::set<uint8_t>* dests)
+ void fe_dependence_check(Pipeline_Latch_Struct *latch, const std::set<uint8_t>* dests)
  {
    //Check dependencies set for each source and destination in use
    latch->stall = false;
@@ -268,3 +273,12 @@
      latch->stall |= dests->count(latch->tr_entry.src2_reg);
  }
  
+ void wb_dependence_check(uint8_t writ_dest, Pipeline_Latch_Struct *festage)
+ {
+   if(writ_dest == festage->tr_entry.dest)
+     festage->stall = false;
+   if(writ_dest == festage->tr_entry.src1_reg)
+     festage->stall = false;
+   if(writ_dest == festage->tr_entry.src2_reg)
+     festage->stall = false;
+ }

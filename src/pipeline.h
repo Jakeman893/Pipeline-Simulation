@@ -49,8 +49,6 @@ typedef struct Pipeline {
   /* Statistics: students need to update these counters*/
   uint64_t stat_retired_inst;         // Total Commited Instructions
   uint64_t stat_num_cycle;            // Total Cycles
-
-  std::set<uint8_t> destinations;
 }Pipeline;
 
 Pipeline* pipe_init(FILE *tr_file);   // Allocate Structures
@@ -66,6 +64,6 @@ void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op); // Branch Predicti
 
 void pipe_print_state(Pipeline *p);                 // Print Pipeline Latches
 
-void dependence_check(Pipeline_Latch_Struct *latch, const std::set<uint8_t>* dests);    //Check sources and destination to determine if dependency
+void fe_dependence_check(Pipeline_Latch_Struct *festage, const Pipeline_Latch_Struct *exstage, const Pipeline_Latch_Struct *memstage);    //Check sources and destination to determine if dependency
 
 #endif

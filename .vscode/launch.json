@@ -33,7 +33,7 @@
                 }
             },
             {
-                "name": "C++ Launch (Remote)",
+                "name": "C++ Launch (Remote Local)",
                 "type": "cppdbg",
                 "request": "launch",
                 "program": "sim",
@@ -47,6 +47,33 @@
                     "MIMode": "gdb",
                     "setupCommands": [
                         {"text" : "target remote 10.0.1.201:9091"}
+                    ]
+                },
+                "pipeTransport": {
+                    "debuggerPath": "/usr/bin/gdb",
+                    "pipeProgram": "c:\\windows\\sysnative\\bash.exe",
+                    "pipeArgs": ["-c"],
+                    "pipeCwd": ""
+                },
+                "sourceFileMap": {
+                    "/mnt/c/": "c:\\"
+                }
+            },
+            {
+                "name": "C++ Launch (Remote)",
+                "type": "cppdbg",
+                "request": "launch",
+                "program": "sim",
+                "args": [""],
+                "miDebuggerServerAddress": "milano.house:9091",
+                "stopAtEntry": false,
+                "cwd": "/mnt/c/Users/jakem.JACOB-PC/Source/Lab_2/src",
+                "environment": [],
+                "externalConsole": true,
+                "windows": {
+                    "MIMode": "gdb",
+                    "setupCommands": [
+                        {"text" : "target remote milano.house:9091"}
                     ]
                 },
                 "pipeTransport": {

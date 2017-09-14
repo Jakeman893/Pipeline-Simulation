@@ -52,8 +52,6 @@
      p->tr_file = tr_file_in;
      p->halt_op_id = ((uint64_t)-1) - 3;           
  
-     p->destinations = std::set<uint8_t>();
- 
      // Allocated Branch Predictor
      if(BPRED_POLICY){
        p->b_pred = new BPRED(BPRED_POLICY);
@@ -121,30 +119,29 @@
      pipe_cycle_ID(p);
      pipe_cycle_FE(p);
  
-     // pipe_print_state(p);
+    //  pipe_print_state(p);
  }
  /**********************************************************************
   * -----------  DO NOT MODIFY THE CODE ABOVE THIS LINE ----------------
   **********************************************************************/
  
- void pipe_cycle_WB(Pipeline *p){
-   int ii;
-   for(ii=0; ii<PIPE_WIDTH; ii++){
-     if(!p->pipe_latch[MEM_LATCH][ii].stall)
-     {
-       // TODO: Remove destination register from pipeline destinations set as it has been written to
-       if(p->pipe_latch[MEM_LATCH][ii].tr_entry.dest_needed)
-         p->destinations.erase(p->pipe_latch[MEM_LATCH][ii].tr_entry.dest);
-       if(p->pipe_latch[MEM_LATCH][ii].valid){
-         p->stat_retired_inst++;
-         if(p->pipe_latch[MEM_LATCH][ii].op_id >= p->halt_op_id){
-     p->halt=true;
-         }
-       }
-     }
-   }
- }
+void pipe_cycle_WB(Pipeline *p){
+  int ii;
+  for(ii=0; ii<PIPE_WIDTH; ii++){
+    Pipeline_Latch_Struct *stage = &p->pipe_latch[MEM_LATCH][ii];
+    if(!stage->stall)
+    {
+      if(stage->valid){
+        p->stat_retired_inst++;
+        if(stage->op_id >= p->halt_op_id){
+          p->halt=true;
+        }
+      }
+    }
+  }
+}
  
+
  //--------------------------------------------------------------------//
  
  void pipe_cycle_MEM(Pipeline *p){
@@ -165,8 +162,6 @@
      if(!p->pipe_latch[EX_LATCH][ii].stall)
      {
        p->pipe_latch[EX_LATCH][ii]=p->pipe_latch[ID_LATCH][ii];
-       p->pipe_latch[EX_LATCH][ii].valid = !p->pipe_latch[EX_LATCH][ii].stall && p->pipe_latch[EX_LATCH][ii].valid;
-       p->pipe_latch[EX_LATCH][ii].stall = false;
      }
    }
  }
@@ -184,19 +179,9 @@
  
      Pipeline_Latch *stage = &p->pipe_latch[ID_LATCH][ii];
  
-     if(stage->stall)
-     {
-       dependence_check(stage, &p->destinations);
-       // pipe_print_state(p);
-     }else
+     if(!stage->stall)
      {
        p->pipe_latch[ID_LATCH][ii]=p->pipe_latch[FE_LATCH][ii];
-       // Stall this stage if next stage is also stalled
-       p->pipe_latch[ID_LATCH][ii].stall=p->pipe_latch[EX_LATCH][ii].stall;
-       dependence_check(stage, &p->destinations);
- 
-       if(stage->tr_entry.dest_needed)
-         p->destinations.insert(stage->tr_entry.dest);
  
        if(ENABLE_MEM_FWD){
          // TODO
@@ -212,53 +197,100 @@
  
  //--------------------------------------------------------------------//
  
- void pipe_cycle_FE(Pipeline *p){
-   int ii;
-   Pipeline_Latch fetch_op;
-   bool tr_read_success;
- 
-   for(ii=0; ii<PIPE_WIDTH; ii++){
-     // If not stalled fetch next instruction
-     if(!p->pipe_latch[FE_LATCH][ii].stall)
-     {
-       pipe_get_fetch_op(p, &fetch_op);
- 
-       if(BPRED_POLICY){
-         pipe_check_bpred(p, &fetch_op);
-       }
-       
-       // copy the op in FE LATCH
-       p->pipe_latch[FE_LATCH][ii]=fetch_op;
-     }
-     // Stall if ID state is stalled
-     p->pipe_latch[FE_LATCH][ii].stall = p->pipe_latch[ID_LATCH][ii].stall;
-   }
-   
- }
+void pipe_cycle_FE(Pipeline *p){
+  int ii;
+  Pipeline_Latch fetch_op;
+  bool tr_read_success;
+
+  for(ii=0; ii<PIPE_WIDTH; ii++){
+    Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
+
+    fe_dependence_check(stage, &p->pipe_latch[EX_LATCH][ii], &p->pipe_latch[MEM_LATCH][ii]);
+
+    //Set valid and stall state in ID stage based on stall
+    p->pipe_latch[ID_LATCH][ii].valid = !stage->stall && stage->valid;
+    p->pipe_latch[ID_LATCH][ii].stall = false;
+
+    //If not stalled
+      //Fetch
+        //Get new instruction
+    if(!stage->stall)
+    {
+      //Fetch Instruction
+      pipe_get_fetch_op(p, &fetch_op);
+      
+      //Branch prediction
+      if(BPRED_POLICY)
+        pipe_check_bpred(p, &fetch_op);
+
+      //Copy op into FE LATCH
+      p->pipe_latch[FE_LATCH][ii]=fetch_op;           
+      
+    }
+  }
+}
  
  
  //--------------------------------------------------------------------//
  
- void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op){
-   // call branch predictor here, if mispred then mark in fetch_op
-   // update the predictor instantly
-   // stall fetch using the flag p->fetch_cbr_stall
- }
+void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op){
+  // call branch predictor here, if mispred then mark in fetch_op
+  // update the predictor instantly
+  // stall fetch using the flag p->fetch_cbr_stall
+}
  
  
  //--------------------------------------------------------------------//
  
- void dependence_check(Pipeline_Latch_Struct *latch, const std::set<uint8_t>* dests)
- {
-   //Check dependencies set for each source and destination in use
-   latch->stall = false;
-   // WAW (Write after Write)
-   if(latch->tr_entry.dest_needed)
-     latch->stall |= dests->count(latch->tr_entry.dest);
-   // RAW (Read after Write)
-   if(latch->tr_entry.src1_needed)
-     latch->stall |= dests->count(latch->tr_entry.src1_reg);
-   if(latch->tr_entry.src2_needed)
-     latch->stall |= dests->count(latch->tr_entry.src2_reg);
- }
- 
+void fe_dependence_check(Pipeline_Latch_Struct *festage, const Pipeline_Latch_Struct *exstage, const Pipeline_Latch_Struct *memstage)
+{
+  festage->stall = false;
+
+  if(exstage->tr_entry.dest_needed && exstage->valid)
+  {
+    uint8_t dest = exstage->tr_entry.dest;
+    //Check sources against EX LATCH
+    if(festage->tr_entry.src1_needed)
+      festage->stall |= dest == festage->tr_entry.src1_reg;
+    if(festage->tr_entry.src2_needed)
+      festage->stall |= dest == festage->tr_entry.src2_reg;
+  }
+  if(memstage->tr_entry.dest_needed && memstage->valid)
+  {
+    //Check sources against MEM_LATCH
+    uint8_t dest = memstage->tr_entry.dest;
+    //Check sources against EX LATCH
+    if(festage->tr_entry.src1_needed)
+      festage->stall |= dest == festage->tr_entry.src1_reg;
+    if(festage->tr_entry.src2_needed)
+      festage->stall |= dest == festage->tr_entry.src2_reg;
+  }
+
+  if(festage->tr_entry.cc_read)
+    festage->stall |= memstage->tr_entry.cc_write | exstage->tr_entry.cc_write;
+}
+
+void wb_dependence_check(Pipeline_Latch_Struct *wbstage, Pipeline_Latch_Struct *festage, Pipeline *p)
+{
+  // if(wbstage->tr_entry.dest_needed)
+  // {
+  //   uint8_t writ_dest = wbstage->tr_entry.dest;
+  //   if(festage->tr_entry.dest_needed && writ_dest == festage->tr_entry.dest)
+  //     festage->stall = false;
+  //   else
+  //     p->destinations.erase(writ_dest);
+  //   if(festage->tr_entry.dest_needed)
+  //     festage->stall |= p->destinations.count(festage->tr_entry.dest);
+  //   // RAW (Read after Write)
+  //   if(festage->tr_entry.src1_needed)
+  //     festage->stall |= p->destinations.count(festage->tr_entry.src1_reg);
+  //   if(festage->tr_entry.src2_needed)
+  //     festage->stall |= p->destinations.count(festage->tr_entry.src2_reg);
+  // }
+  // if(wbstage->tr_entry.cc_write)
+  // {
+  //   festage->stall &= 
+  //           ((p->pipe_latch[ID_LATCH][0].tr_entry.cc_write & p->pipe_latch[ID_LATCH][0].valid) | 
+  //           (p->pipe_latch[EX_LATCH][0].tr_entry.cc_write & p->pipe_latch[EX_LATCH][0].valid));
+  // }
+}

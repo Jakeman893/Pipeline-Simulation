@@ -66,4 +66,9 @@ void pipe_print_state(Pipeline *p);                 // Print Pipeline Latches
 
 void fe_dependence_check(Pipeline_Latch_Struct *festage, const Pipeline_Latch_Struct *exstage, const Pipeline_Latch_Struct *memstage);    //Check sources and destination to determine if dependency
 
+inline bool id_comp(Pipeline_Latch const &a, Pipeline_Latch const &b)
+{
+  return a.op_id < b.op_id;   
+}
+
 #endif

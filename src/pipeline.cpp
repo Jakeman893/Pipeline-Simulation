@@ -196,47 +196,54 @@ void pipe_cycle_FE(Pipeline *p){
   int ii;
   Pipeline_Latch fetch_op;
   bool tr_read_success;
-  bool pause_pipeline = false;
+  bool prev_stall = false;
+  bool inter_depends = false;
   bool cc_write = false;
+  int lane = 0;
   int dest_map[255] = {0};
 
   for(ii=0; ii<PIPE_WIDTH; ii++)
   {
     Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
-    
-    // Check dependencies for each lane of the pipeline
-    fe_dependence_check(stage, p->pipe_latch[EX_LATCH], p->pipe_latch[MEM_LATCH]);
-
-    // If any lane of the pipeline has a stall not related to other instructions in the stage, pause entire pipeline
-    pause_pipeline |= stage->stall;
-
-    // Check if source dependency for previous instructions in this stage
-    if (stage->tr_entry.src1_needed || stage->tr_entry.src2_needed)
+    // if the previous instruction stalled, this one must as well and we don't need to check its dependencies
+    if(prev_stall)
+      stage->stall = prev_stall;
+    else
     {
-      stage->stall |= (dest_map[stage->tr_entry.src1_reg] != 0);
-      stage->stall |= (dest_map[stage->tr_entry.src1_reg] != 0);
+      stage->stall = false;
+      // Check if source dependency for previous instructions in this stage
+      if (stage->tr_entry.src1_needed || stage->tr_entry.src2_needed)
+      {
+        stage->stall |= (dest_map[stage->tr_entry.src1_reg] != 0);
+        stage->stall |= (dest_map[stage->tr_entry.src1_reg] != 0);
+      }
+
+      // Increment value found in dest_map for the register written to
+      if (stage->tr_entry.dest_needed)
+        dest_map[stage->tr_entry.dest]++;
+
+      if (cc_write && stage->tr_entry.cc_read)
+        stage->stall = true;
+
+      // Set cc_write to check if any instruction after this one should be stalled individually
+      cc_write |= stage->tr_entry.cc_write;
+
+      inter_depends |= stage->stall;
+
+      // Check dependencies for each lane of the pipeline
+      fe_dependence_check(stage, p->pipe_latch[EX_LATCH], p->pipe_latch[MEM_LATCH]);
     }
 
-    // Increment value found in dest_map for the register written to
-    if (stage->tr_entry.dest_needed)
-      dest_map[stage->tr_entry.dest]++;
+    // Based on stall value, set propagated instruction validity
+    p->pipe_latch[ID_LATCH][ii].valid = (!stage->stall) && stage->valid;
+    p->pipe_latch[ID_LATCH][ii].stall = false;
 
-    if (cc_write && stage->tr_entry.cc_read)
-      stage->stall = true;
-
-    // Set cc_write to check if any instruction after this one should be stalled individually
-    cc_write |= stage->tr_entry.cc_write;
+    // Informs next instruction that the previous instruction stalled, thus they must as well
+    prev_stall = stage->stall;
   }
 
-  for(ii=0; ii < PIPE_WIDTH; ii++)
-  {
-    Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
-    //Set valid and stall state in ID stage based on stall
-    p->pipe_latch[ID_LATCH][ii].valid = (!stage->stall && !pause_pipeline) && stage->valid;
-    p->pipe_latch[ID_LATCH][ii].stall = false;    
-  }
-
-  if(!pause_pipeline)
+  // If there is a disconnect between instructions continuing down pipe and instructions stalled in a stage, reorder
+  if(inter_depends)
   {
     int lane = 0;
     for(ii=0; ii< PIPE_WIDTH; ii++)
@@ -244,7 +251,9 @@ void pipe_cycle_FE(Pipeline *p){
       Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
       if(stage->stall)
       {
+        // Order stalled instructions in increasing op_id order
         p->pipe_latch[FE_LATCH][lane++] = *stage;
+        // Make sure to invalidate and de-stall original position
         stage->valid = false;
         stage->stall = false;
       }
@@ -256,7 +265,7 @@ void pipe_cycle_FE(Pipeline *p){
     //If not stalled
       //Fetch
         //Get new instruction
-    if(!stage->stall && !pause_pipeline)
+    if(!stage->stall)
     {
       //Fetch Instruction
       pipe_get_fetch_op(p, &fetch_op);
@@ -286,7 +295,6 @@ void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op){
  
 void fe_dependence_check(Pipeline_Latch_Struct *festage, const Pipeline_Latch_Struct *exstage, const Pipeline_Latch_Struct *memstage)
 {
-  festage->stall = false;
   int ii;
   for(ii=0; ii < PIPE_WIDTH; ii++)
   {

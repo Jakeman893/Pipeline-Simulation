@@ -262,3 +262,4 @@ __pycache__/
 src/sim
 scripts/report.txt
 results/
+src/result*

@@ -170,18 +170,13 @@ void pipe_cycle_WB(Pipeline *p){
  
  void pipe_cycle_ID(Pipeline *p){
  int ii;
-   for(ii=0; ii<PIPE_WIDTH; ii++){
-     // TODO: Check if previously stalled
-     // True:
-     /// Check if dependency still exists -> if not stall = false
-     // False:
-     /// Carry out ops and add destination to set
- 
+   for(ii=0; ii<PIPE_WIDTH; ii++){ 
      Pipeline_Latch *stage = &p->pipe_latch[ID_LATCH][ii];
  
      if(!stage->stall)
      {
        p->pipe_latch[ID_LATCH][ii]=p->pipe_latch[FE_LATCH][ii];
+       p->pipe_latch[ID_LATCH][ii].stall = false;
  
        if(ENABLE_MEM_FWD){
          // TODO
@@ -201,20 +196,67 @@ void pipe_cycle_FE(Pipeline *p){
   int ii;
   Pipeline_Latch fetch_op;
   bool tr_read_success;
+  bool pause_pipeline = false;
+  bool cc_write = false;
+  int dest_map[255] = {0};
+
+  for(ii=0; ii<PIPE_WIDTH; ii++)
+  {
+    Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
+    
+    // Check dependencies for each lane of the pipeline
+    fe_dependence_check(stage, p->pipe_latch[EX_LATCH], p->pipe_latch[MEM_LATCH]);
+
+    // If any lane of the pipeline has a stall not related to other instructions in the stage, pause entire pipeline
+    pause_pipeline |= stage->stall;
+
+    // Check if source dependency for previous instructions in this stage
+    if (stage->tr_entry.src1_needed || stage->tr_entry.src2_needed)
+    {
+      stage->stall |= (dest_map[stage->tr_entry.src1_reg] != 0);
+      stage->stall |= (dest_map[stage->tr_entry.src1_reg] != 0);
+    }
+
+    // Increment value found in dest_map for the register written to
+    if (stage->tr_entry.dest_needed)
+      dest_map[stage->tr_entry.dest]++;
+
+    if (cc_write && stage->tr_entry.cc_read)
+      stage->stall = true;
+
+    // Set cc_write to check if any instruction after this one should be stalled individually
+    cc_write |= stage->tr_entry.cc_write;
+  }
+
+  for(ii=0; ii < PIPE_WIDTH; ii++)
+  {
+    Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
+    //Set valid and stall state in ID stage based on stall
+    p->pipe_latch[ID_LATCH][ii].valid = (!stage->stall && !pause_pipeline) && stage->valid;
+    p->pipe_latch[ID_LATCH][ii].stall = false;    
+  }
+
+  if(!pause_pipeline)
+  {
+    int lane = 0;
+    for(ii=0; ii< PIPE_WIDTH; ii++)
+    {
+      Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
+      if(stage->stall)
+      {
+        p->pipe_latch[FE_LATCH][lane++] = *stage;
+        stage->valid = false;
+        stage->stall = false;
+      }
+    }
+  }
 
   for(ii=0; ii<PIPE_WIDTH; ii++){
     Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
-
-    fe_dependence_check(stage, &p->pipe_latch[EX_LATCH][ii], &p->pipe_latch[MEM_LATCH][ii]);
-
-    //Set valid and stall state in ID stage based on stall
-    p->pipe_latch[ID_LATCH][ii].valid = !stage->stall && stage->valid;
-    p->pipe_latch[ID_LATCH][ii].stall = false;
-
     //If not stalled
       //Fetch
         //Get new instruction
-    if(!stage->stall)
+    if(!stage->stall && !pause_pipeline)
     {
       //Fetch Instruction
       pipe_get_fetch_op(p, &fetch_op);
@@ -245,52 +287,32 @@ void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op){
 void fe_dependence_check(Pipeline_Latch_Struct *festage, const Pipeline_Latch_Struct *exstage, const Pipeline_Latch_Struct *memstage)
 {
   festage->stall = false;
-
-  if(exstage->tr_entry.dest_needed && exstage->valid)
+  int ii;
+  for(ii=0; ii < PIPE_WIDTH; ii++)
   {
-    uint8_t dest = exstage->tr_entry.dest;
-    //Check sources against EX LATCH
-    if(festage->tr_entry.src1_needed)
-      festage->stall |= dest == festage->tr_entry.src1_reg;
-    if(festage->tr_entry.src2_needed)
-      festage->stall |= dest == festage->tr_entry.src2_reg;
-  }
-  if(memstage->tr_entry.dest_needed && memstage->valid)
-  {
-    //Check sources against MEM_LATCH
-    uint8_t dest = memstage->tr_entry.dest;
-    //Check sources against EX LATCH
-    if(festage->tr_entry.src1_needed)
-      festage->stall |= dest == festage->tr_entry.src1_reg;
-    if(festage->tr_entry.src2_needed)
-      festage->stall |= dest == festage->tr_entry.src2_reg;
-  }
+    if(exstage[ii].tr_entry.dest_needed && exstage[ii].valid)
+    {
+      uint8_t dest = exstage[ii].tr_entry.dest;
+      //Check sources against EX LATCH
+      if(festage->tr_entry.src1_needed)
+        festage->stall |= dest == festage->tr_entry.src1_reg;
+      if(festage->tr_entry.src2_needed)
+        festage->stall |= dest == festage->tr_entry.src2_reg;
+    }
+    if(memstage[ii].tr_entry.dest_needed && memstage[ii].valid)
+    {
+      //Check sources against MEM_LATCH
+      uint8_t dest = memstage[ii].tr_entry.dest;
+      //Check sources against EX LATCH
+      if(festage->tr_entry.src1_needed)
+        festage->stall |= dest == festage->tr_entry.src1_reg;
+      if(festage->tr_entry.src2_needed)
+        festage->stall |= dest == festage->tr_entry.src2_reg;
+    }
 
-  if(festage->tr_entry.cc_read)
-    festage->stall |= memstage->tr_entry.cc_write | exstage->tr_entry.cc_write;
-}
-
-void wb_dependence_check(Pipeline_Latch_Struct *wbstage, Pipeline_Latch_Struct *festage, Pipeline *p)
-{
-  // if(wbstage->tr_entry.dest_needed)
-  // {
-  //   uint8_t writ_dest = wbstage->tr_entry.dest;
-  //   if(festage->tr_entry.dest_needed && writ_dest == festage->tr_entry.dest)
-  //     festage->stall = false;
-  //   else
-  //     p->destinations.erase(writ_dest);
-  //   if(festage->tr_entry.dest_needed)
-  //     festage->stall |= p->destinations.count(festage->tr_entry.dest);
-  //   // RAW (Read after Write)
-  //   if(festage->tr_entry.src1_needed)
-  //     festage->stall |= p->destinations.count(festage->tr_entry.src1_reg);
-  //   if(festage->tr_entry.src2_needed)
-  //     festage->stall |= p->destinations.count(festage->tr_entry.src2_reg);
-  // }
-  // if(wbstage->tr_entry.cc_write)
-  // {
-  //   festage->stall &= 
-  //           ((p->pipe_latch[ID_LATCH][0].tr_entry.cc_write & p->pipe_latch[ID_LATCH][0].valid) | 
-  //           (p->pipe_latch[EX_LATCH][0].tr_entry.cc_write & p->pipe_latch[EX_LATCH][0].valid));
-  // }
+    if(festage->tr_entry.cc_read)
+      festage->stall |= ((memstage[ii].tr_entry.cc_write && memstage[ii].valid) | (exstage[ii].tr_entry.cc_write && exstage[ii].valid));
+    
+    festage->stall |= exstage[ii].stall;
+  }
 }

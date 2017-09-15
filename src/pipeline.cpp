@@ -7,6 +7,7 @@
 
  #include "pipeline.h"
  #include <cstdlib>
+ #include <algorithm>
  
  extern int32_t PIPE_WIDTH;
  extern int32_t ENABLE_MEM_FWD;
@@ -197,7 +198,6 @@ void pipe_cycle_FE(Pipeline *p){
   Pipeline_Latch fetch_op;
   bool tr_read_success;
   bool prev_stall = false;
-  bool inter_depends = false;
   bool cc_write = false;
   int lane = 0;
   int dest_map[255] = {0};
@@ -228,8 +228,6 @@ void pipe_cycle_FE(Pipeline *p){
       // Set cc_write to check if any instruction after this one should be stalled individually
       cc_write |= stage->tr_entry.cc_write;
 
-      inter_depends |= stage->stall;
-
       // Check dependencies for each lane of the pipeline
       fe_dependence_check(stage, p->pipe_latch[EX_LATCH], p->pipe_latch[MEM_LATCH]);
     }
@@ -240,31 +238,7 @@ void pipe_cycle_FE(Pipeline *p){
 
     // Informs next instruction that the previous instruction stalled, thus they must as well
     prev_stall = stage->stall;
-  }
 
-  // If there is a disconnect between instructions continuing down pipe and instructions stalled in a stage, reorder
-  if(inter_depends)
-  {
-    int lane = 0;
-    for(ii=0; ii< PIPE_WIDTH; ii++)
-    {
-      Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
-      if(stage->stall)
-      {
-        // Order stalled instructions in increasing op_id order
-        p->pipe_latch[FE_LATCH][lane++] = *stage;
-        // Make sure to invalidate and de-stall original position
-        stage->valid = false;
-        stage->stall = false;
-      }
-    }
-  }
-
-  for(ii=0; ii<PIPE_WIDTH; ii++){
-    Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
-    //If not stalled
-      //Fetch
-        //Get new instruction
     if(!stage->stall)
     {
       //Fetch Instruction
@@ -278,6 +252,14 @@ void pipe_cycle_FE(Pipeline *p){
       p->pipe_latch[FE_LATCH][ii]=fetch_op;           
       
     }
+  }
+
+  // Sort using std's sort library
+  if(PIPE_WIDTH > 0)
+  {
+    std::sort(p->pipe_latch[FE_LATCH],
+              p->pipe_latch[FE_LATCH] + PIPE_WIDTH,
+              id_comp);
   }
 }
  

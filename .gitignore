@@ -263,3 +263,5 @@ src/sim
 scripts/report.txt
 results/
 src/result*
+*.o
+*.txt

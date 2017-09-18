@@ -126,6 +126,118 @@
   * -----------  DO NOT MODIFY THE CODE ABOVE THIS LINE ----------------
   **********************************************************************/
  
+void fe_dependence_check(Pipeline_Latch_Struct *festage, const Pipeline_Latch_Struct *exstage, const Pipeline_Latch_Struct *memstage)
+{
+  int ii;
+  for(ii=0; ii < PIPE_WIDTH; ii++)
+  {
+    if(exstage[ii].tr_entry.dest_needed && exstage[ii].valid)
+    {
+      uint8_t dest = exstage[ii].tr_entry.dest;
+      //Check sources against EX LATCH
+      festage->stall |= (festage->tr_entry.src1_needed && dest == festage->tr_entry.src1_reg);
+      festage->stall |= (festage->tr_entry.src2_needed && dest == festage->tr_entry.src2_reg);
+    }
+    if(memstage[ii].tr_entry.dest_needed && memstage[ii].valid)
+    {
+      uint8_t dest = memstage[ii].tr_entry.dest;
+      //Check sources against MEM LATCH
+      festage->stall |= (festage->tr_entry.src1_needed && dest == festage->tr_entry.src1_reg);
+      festage->stall |= (festage->tr_entry.src2_needed && dest == festage->tr_entry.src2_reg);
+    }
+
+    if(festage->tr_entry.cc_read)
+      festage->stall |= ((memstage[ii].tr_entry.cc_write && memstage[ii].valid) | (exstage[ii].tr_entry.cc_write && exstage[ii].valid));
+    
+  }
+}
+
+bool fe_data_forwarding(Pipeline_Latch_Struct *festage, const Pipeline_Latch_Struct *exstage, const Pipeline_Latch_Struct *memstage)
+{
+  int ii;
+  for(ii=0; ii < PIPE_WIDTH; ii++)
+  {
+    // TODO: See if stalling factor is here and can be forwarded
+    // Available to be forwarded ops: ALU, OTHER, CBR
+    // Forward store register value and conditional code register
+    if(ENABLE_EXE_FWD && exstage[ii].valid)
+    {
+      if(exstage[ii].tr_entry.dest_needed)
+      {
+        uint8_t dest = exstage[ii].tr_entry.dest;
+        // If source 1 register is needed and it equals the destination, forwarding (thus stall should be set to false)
+        if(festage->tr_entry.src1_needed && dest == festage->tr_entry.src1_reg)
+        {
+          if(exstage[ii].tr_entry.op_type != OP_LD)
+          {
+            // printf("Forwarding from EX %lu", exstage[ii].op_id);
+            return false;
+          }
+          else
+            return true;
+        }
+        if(festage->tr_entry.src2_needed && dest == festage->tr_entry.src2_reg)
+        {
+          if(exstage[ii].tr_entry.op_type != OP_LD)
+          {
+            // printf("Forwarding from EX %lu", exstage[ii].op_id);
+            return false;
+          }
+          else
+            return true;
+        }
+      }
+      // If the instruction is reading from cc and the exstage instruction is writing, forward
+      if(festage->tr_entry.cc_read && exstage[ii].tr_entry.cc_write)
+      {
+        if(exstage[ii].tr_entry.op_type != OP_LD)
+        {
+          // printf("Forwarding from EX %lu", exstage[ii].op_id);
+          return false;
+        }
+        else
+          return true;
+      }
+    }
+  }
+  for(ii=0; ii < PIPE_WIDTH; ii++)
+  {
+    // TODO: See if stalling factor is here and can be forwarded
+    // Available to be forwarded ops: ALU, LD, ST, CBR, OTHER
+    // Forward store register value and conditional code register
+    if(ENABLE_MEM_FWD && memstage[ii].valid)
+    {
+      if(memstage[ii].tr_entry.dest_needed)
+      {
+        uint8_t dest = memstage[ii].tr_entry.dest;
+        // If source 1 register is needed and it equals the destination, forwarding (thus stall should be set to false)
+        if(festage->tr_entry.src1_needed && dest == festage->tr_entry.src1_reg)
+        {
+          // printf("Forwarding from MEM %lu", memstage[ii].op_id);
+          return false;
+        }
+        if(festage->tr_entry.src2_needed && dest == festage->tr_entry.src2_reg)
+        {
+          // printf("Forwarding from MEM %lu", memstage[ii].op_id);
+          return false;
+        }
+      }
+      // If the instruction is reading from cc and the exstage instruction is writing, forward
+      if(festage->tr_entry.cc_read && memstage[ii].tr_entry.cc_write)
+      {
+        // printf("Forwarding from MEM %lu", memstage[ii].op_id);
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool id_comp(Pipeline_Latch const &a, Pipeline_Latch const &b)
+{
+  return a.op_id < b.op_id;   
+}
+
 void pipe_cycle_WB(Pipeline *p){
   int ii;
   for(ii=0; ii<PIPE_WIDTH; ii++){
@@ -199,9 +311,9 @@ void pipe_cycle_FE(Pipeline *p){
   bool tr_read_success;
   bool prev_stall = false;
   bool cc_write = false;
-  int lane = 0;
   int dest_map[255] = {0};
 
+  // printf("\n");
   for(ii=0; ii<PIPE_WIDTH; ii++)
   {
     Pipeline_Latch *stage = &p->pipe_latch[FE_LATCH][ii];
@@ -210,7 +322,19 @@ void pipe_cycle_FE(Pipeline *p){
       stage->stall = prev_stall;
     else
     {
+      // printf("op_id: %lu\top_type: %d\tvalid: %d\tsrc1: %d\tsrc2: %d\tdest: %d\tcc_write: %d\tcc_read: %d\n", stage->op_id, stage->tr_entry.op_type, stage->valid, stage->tr_entry.src1_reg, stage->tr_entry.src2_reg, stage->tr_entry.dest, stage->tr_entry.cc_write, stage->tr_entry.cc_read);
       stage->stall = false;
+
+      // Check dependencies for each lane of the pipeline
+      fe_dependence_check(stage, p->pipe_latch[EX_LATCH], p->pipe_latch[MEM_LATCH]);
+      
+      // See if any of the dependencies are able to forward data
+      if(stage->stall && (ENABLE_EXE_FWD || ENABLE_MEM_FWD))
+      {
+        stage->stall = fe_data_forwarding(stage, p->pipe_latch[EX_LATCH], p->pipe_latch[MEM_LATCH]);
+        // if(!stage->stall) { printf(" to %lu\n", stage->op_id); }
+      }
+
       // Check if source dependency for previous instructions in this stage
       if (stage->tr_entry.src1_needed || stage->tr_entry.src2_needed)
       {
@@ -222,14 +346,10 @@ void pipe_cycle_FE(Pipeline *p){
       if (stage->tr_entry.dest_needed)
         dest_map[stage->tr_entry.dest]++;
 
-      if (cc_write && stage->tr_entry.cc_read)
-        stage->stall = true;
+      stage->stall |= cc_write && stage->tr_entry.cc_read;
 
       // Set cc_write to check if any instruction after this one should be stalled individually
       cc_write |= stage->tr_entry.cc_write;
-
-      // Check dependencies for each lane of the pipeline
-      fe_dependence_check(stage, p->pipe_latch[EX_LATCH], p->pipe_latch[MEM_LATCH]);
     }
 
     // Based on stall value, set propagated instruction validity
@@ -275,34 +395,3 @@ void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op){
  
  //--------------------------------------------------------------------//
  
-void fe_dependence_check(Pipeline_Latch_Struct *festage, const Pipeline_Latch_Struct *exstage, const Pipeline_Latch_Struct *memstage)
-{
-  int ii;
-  for(ii=0; ii < PIPE_WIDTH; ii++)
-  {
-    if(exstage[ii].tr_entry.dest_needed && exstage[ii].valid)
-    {
-      uint8_t dest = exstage[ii].tr_entry.dest;
-      //Check sources against EX LATCH
-      if(festage->tr_entry.src1_needed)
-        festage->stall |= dest == festage->tr_entry.src1_reg;
-      if(festage->tr_entry.src2_needed)
-        festage->stall |= dest == festage->tr_entry.src2_reg;
-    }
-    if(memstage[ii].tr_entry.dest_needed && memstage[ii].valid)
-    {
-      //Check sources against MEM_LATCH
-      uint8_t dest = memstage[ii].tr_entry.dest;
-      //Check sources against EX LATCH
-      if(festage->tr_entry.src1_needed)
-        festage->stall |= dest == festage->tr_entry.src1_reg;
-      if(festage->tr_entry.src2_needed)
-        festage->stall |= dest == festage->tr_entry.src2_reg;
-    }
-
-    if(festage->tr_entry.cc_read)
-      festage->stall |= ((memstage[ii].tr_entry.cc_write && memstage[ii].valid) | (exstage[ii].tr_entry.cc_write && exstage[ii].valid));
-    
-    festage->stall |= exstage[ii].stall;
-  }
-}

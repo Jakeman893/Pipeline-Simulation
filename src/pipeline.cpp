@@ -365,7 +365,7 @@ void pipe_cycle_FE(Pipeline *p){
       pipe_get_fetch_op(p, &fetch_op);
       
       //Branch prediction
-      if(BPRED_POLICY)
+      if(BPRED_POLICY && fetch_op.tr_entry.op_type == OP_CBR)
         pipe_check_bpred(p, &fetch_op);
 
       //Copy op into FE LATCH
@@ -382,16 +382,27 @@ void pipe_cycle_FE(Pipeline *p){
               id_comp);
   }
 }
- 
- 
- //--------------------------------------------------------------------//
- 
+
+//--------------------------------------------------------------------//
+
 void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op){
   // call branch predictor here, if mispred then mark in fetch_op
   // update the predictor instantly
   // stall fetch using the flag p->fetch_cbr_stall
+  bool taken = p->b_pred->GetPrediction(fetch_op->tr_entry.inst_addr);
+  // If taken equals br_dir, means prediction was correct.
+  if (taken && fetch_op->tr_entry.br_dir)
+    return;
+  // Otherwise, the prediction was wrong and must be stalled
+  else
+  {
+    // printf("Branch %lu: %d\n", fetch_op->op_id, fetch_op->tr_entry.br_dir);
+    p->fetch_cbr_stall = true;
+    ++(p->b_pred->stat_num_mispred);
+    fetch_op->is_mispred_cbr = true;
+  }
 }
- 
- 
+
+
  //--------------------------------------------------------------------//
- 
+

@@ -7,7 +7,7 @@
 /////////////////////////////////////////////////////////////
 
 BPRED::BPRED(uint32_t policy) {
-
+    this->policy = BPRED_TYPE_ENUM(policy);
   
 }
 
@@ -15,7 +15,13 @@ BPRED::BPRED(uint32_t policy) {
 /////////////////////////////////////////////////////////////
 
 bool BPRED::GetPrediction(uint32_t PC){
-    return TAKEN;  
+    ++stat_num_branches;
+    switch(policy){
+        case BPRED_ALWAYS_TAKEN:
+            return TAKEN;
+        case BPRED_GSHARE:
+            return TAKEN;
+    }
 }
 
 

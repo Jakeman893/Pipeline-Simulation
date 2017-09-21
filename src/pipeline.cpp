@@ -235,6 +235,8 @@ bool fe_data_forwarding(Pipeline_Latch_Struct *festage, const Pipeline_Latch_Str
 
 bool id_comp(Pipeline_Latch const &a, Pipeline_Latch const &b)
 {
+  if(a.op_id == 0) return false;
+  if(b.op_id == 0) return true;
   return a.op_id < b.op_id;   
 }
 
@@ -249,6 +251,8 @@ void pipe_cycle_WB(Pipeline *p){
         if(stage->op_id >= p->halt_op_id){
           p->halt=true;
         }
+        if(stage->is_mispred_cbr)
+          p->fetch_cbr_stall = false;
       }
     }
   }
@@ -290,15 +294,6 @@ void pipe_cycle_WB(Pipeline *p){
      {
        p->pipe_latch[ID_LATCH][ii]=p->pipe_latch[FE_LATCH][ii];
        p->pipe_latch[ID_LATCH][ii].stall = false;
- 
-       if(ENABLE_MEM_FWD){
-         // TODO
-       }
- 
-       if(ENABLE_EXE_FWD){
-         // TODO
-       }
- 
      }
    }
  }
@@ -361,16 +356,22 @@ void pipe_cycle_FE(Pipeline *p){
 
     if(!stage->stall)
     {
-      //Fetch Instruction
-      pipe_get_fetch_op(p, &fetch_op);
-      
-      //Branch prediction
-      if(BPRED_POLICY && fetch_op.tr_entry.op_type == OP_CBR)
-        pipe_check_bpred(p, &fetch_op);
+      if(!p->fetch_cbr_stall)
+      {
+        //Fetch Instruction
+        pipe_get_fetch_op(p, &fetch_op);
+        
+        //Branch prediction
+        if(BPRED_POLICY && fetch_op.tr_entry.op_type == OP_CBR)
+          pipe_check_bpred(p, &fetch_op);
 
-      //Copy op into FE LATCH
-      p->pipe_latch[FE_LATCH][ii]=fetch_op;           
-      
+        //Copy op into FE LATCH
+        p->pipe_latch[FE_LATCH][ii]=fetch_op;
+      } else if(p->fetch_cbr_stall)
+      {
+          stage->valid = false;
+          stage->op_id = 0;
+      }
     }
   }
 

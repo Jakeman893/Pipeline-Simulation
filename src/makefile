@@ -3,9 +3,6 @@ SIM_OBJS = $(SIM_SRC:.cpp=.o)
 
 all: $(SIM_SRC) sim
 
-debug:
-	g++ -g sim.cpp -g pipeline.cpp -g bpred.cpp -o sim
-
 %.o: %.c 
 	g++ -c -o $@ $<  
 

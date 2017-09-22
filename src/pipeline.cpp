@@ -235,6 +235,8 @@ bool fe_data_forwarding(Pipeline_Latch_Struct *festage, const Pipeline_Latch_Str
 
 bool id_comp(Pipeline_Latch const &a, Pipeline_Latch const &b)
 {
+  if(a.op_id == 0) return false;
+  if(b.op_id == 0) return true;
   return a.op_id < b.op_id;   
 }
 
@@ -249,6 +251,8 @@ void pipe_cycle_WB(Pipeline *p){
         if(stage->op_id >= p->halt_op_id){
           p->halt=true;
         }
+        if(stage->is_mispred_cbr)
+          p->fetch_cbr_stall = false;
       }
     }
   }
@@ -290,15 +294,6 @@ void pipe_cycle_WB(Pipeline *p){
      {
        p->pipe_latch[ID_LATCH][ii]=p->pipe_latch[FE_LATCH][ii];
        p->pipe_latch[ID_LATCH][ii].stall = false;
- 
-       if(ENABLE_MEM_FWD){
-         // TODO
-       }
- 
-       if(ENABLE_EXE_FWD){
-         // TODO
-       }
- 
      }
    }
  }
@@ -361,16 +356,22 @@ void pipe_cycle_FE(Pipeline *p){
 
     if(!stage->stall)
     {
-      //Fetch Instruction
-      pipe_get_fetch_op(p, &fetch_op);
-      
-      //Branch prediction
-      if(BPRED_POLICY)
-        pipe_check_bpred(p, &fetch_op);
+      if(!p->fetch_cbr_stall)
+      {
+        //Fetch Instruction
+        pipe_get_fetch_op(p, &fetch_op);
+        
+        //Branch prediction
+        if(BPRED_POLICY && fetch_op.tr_entry.op_type == OP_CBR)
+          pipe_check_bpred(p, &fetch_op);
 
-      //Copy op into FE LATCH
-      p->pipe_latch[FE_LATCH][ii]=fetch_op;           
-      
+        //Copy op into FE LATCH
+        p->pipe_latch[FE_LATCH][ii]=fetch_op;
+      } else if(p->fetch_cbr_stall)
+      {
+          stage->valid = false;
+          stage->op_id = 0;
+      }
     }
   }
 
@@ -382,16 +383,31 @@ void pipe_cycle_FE(Pipeline *p){
               id_comp);
   }
 }
- 
- 
- //--------------------------------------------------------------------//
- 
+
+//--------------------------------------------------------------------//
+
 void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op){
   // call branch predictor here, if mispred then mark in fetch_op
   // update the predictor instantly
   // stall fetch using the flag p->fetch_cbr_stall
+  uint64_t PC = fetch_op->tr_entry.inst_addr;
+  bool taken = p->b_pred->GetPrediction(PC);
+
+  p->b_pred->UpdatePredictor(PC, fetch_op->tr_entry.br_dir, taken);
+  // The prediction was wrong and must be stalled
+  if ((taken && fetch_op->tr_entry.br_dir) || (!taken && !fetch_op->tr_entry.br_dir))
+  {
+    return;
+  }
+  else
+  {
+    // printf("Branch %lu: %d\n", fetch_op->op_id, fetch_op->tr_entry.br_dir);
+    p->fetch_cbr_stall = true;
+    ++(p->b_pred->stat_num_mispred);
+    fetch_op->is_mispred_cbr = true;
+  }
 }
- 
- 
+
+
  //--------------------------------------------------------------------//
- 
+

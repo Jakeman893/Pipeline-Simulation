@@ -390,11 +390,15 @@ void pipe_check_bpred(Pipeline *p, Pipeline_Latch *fetch_op){
   // call branch predictor here, if mispred then mark in fetch_op
   // update the predictor instantly
   // stall fetch using the flag p->fetch_cbr_stall
-  bool taken = p->b_pred->GetPrediction(fetch_op->tr_entry.inst_addr);
-  // If taken equals br_dir, means prediction was correct.
-  if (taken && fetch_op->tr_entry.br_dir)
+  uint64_t PC = fetch_op->tr_entry.inst_addr;
+  bool taken = p->b_pred->GetPrediction(PC);
+
+  p->b_pred->UpdatePredictor(PC, fetch_op->tr_entry.br_dir, taken);
+  // The prediction was wrong and must be stalled
+  if ((taken && fetch_op->tr_entry.br_dir) || (!taken && !fetch_op->tr_entry.br_dir))
+  {
     return;
-  // Otherwise, the prediction was wrong and must be stalled
+  }
   else
   {
     // printf("Branch %lu: %d\n", fetch_op->op_id, fetch_op->tr_entry.br_dir);
